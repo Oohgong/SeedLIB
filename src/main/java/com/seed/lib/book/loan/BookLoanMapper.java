@@ -1,5 +1,6 @@
 package com.seed.lib.book.loan;
 
+import java.sql.Date;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -11,18 +12,18 @@ import com.seed.lib.util.BookLoanPager;
 @Mapper
 public interface BookLoanMapper {
 	
-	//대출하면 도서관이 보유하고 있는 권수 update
-	public int setQuanUpdate (int quan) throws Exception;
 	
 	//보유 권수 계산
 	public int getQuan (BookLibVO libVO) throws Exception;
 	
-	//보유 권수가 0일때 able 0으로 update
-	//보유 권수 1일때 able 1로 update
-	public BookVO setAbleUpdate (BookLibVO libVO) throws Exception;
+	//대출하면 도서관이 보유하고 있는 권수 update
+	public void setQuanUpdate (Long isbn, Long libNum) throws Exception;
 	
 	//대출하면 책의 대출 횟수 update
-	public BookVO setCountUpdate (BookVO bookVO) throws Exception;
+	public void setCountUpdate (Long isbn) throws Exception;
+	
+	//가장 빠른 반납날짜 불러오기
+	public Date getRtDate (Long isbn) throws Exception;
 	
 //----------------------------------------------------------------------	
 
@@ -35,9 +36,6 @@ public interface BookLoanMapper {
 	//대출 신청 (인서트)
 	public int setLoan (BookLoanVO loVO) throws Exception;
 	
-	//반납날짜 계산
-	public Long getRtDate (Long LoanLDate) throws Exception;
-	
 	//대출 목록 stStatus가 1이면 대출중 | 0이면 이력
 	public List<BookVO> getLoanList (BookLoanPager pager) throws Exception;
 	
@@ -46,9 +44,6 @@ public interface BookLoanMapper {
 	
 	//대출 연장 - 최대 2번
 	public int setExtension (BookLoanVO loVO) throws Exception;
-	
-	//대출한 책 권수
-	public int getLoanCount (String userName, int rtStatus) throws Exception;
 
 //-----------------------------------------------------------------------	
 	
@@ -62,7 +57,7 @@ public interface BookLoanMapper {
 	public List<BookVO> getReList (BookLoanPager pager) throws Exception;
 	
 	//예약한 책 권수
-	public int getReCount (String userName) throws Exception;
+	public int getReCount (BookLoanVO loVO) throws Exception;
 
 //-----------------------------------------------------------------------	
 	
@@ -73,7 +68,7 @@ public interface BookLoanMapper {
 	public List<BookVO> getMuList (BookLoanPager pager) throws Exception;
 	
 	//상호대출 책 권수
-	public int getMuCount (String userName) throws Exception;
+	public int getMuCount (BookLoanVO loVO) throws Exception;
 	
 //-----------------------------------------------------------------------	
 	

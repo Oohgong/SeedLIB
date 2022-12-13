@@ -85,6 +85,10 @@ public class BookController {
 		bookVO = bookService.getLibDetail(bookVO);
 		mv.addObject("lib", bookVO);
 		
+		//반납일
+		Date date = loanService.getRtDate(bookVO.getIsbn());
+		mv.addObject("rtDate", date);
+		
 		//책 좋아요 총갯수
 		int bookLike = bookLikeService.getBookLike(bookVO);
 		mv.addObject("like", bookLike);
@@ -131,6 +135,14 @@ public class BookController {
 		int result = loanService.setMutual(loVO);
 		return result;
 	}
+	
+	//연장 신청
+	@ResponseBody
+	@PostMapping("extension")
+	public int setExtensionAdd (@RequestBody BookLoanVO loVO) throws Exception {
+		int result = loanService.setExtension(loVO);
+		return result;
+	}	
 	
 	
 }
