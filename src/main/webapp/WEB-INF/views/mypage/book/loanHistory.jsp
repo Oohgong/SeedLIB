@@ -89,7 +89,7 @@
                         <div class="divContent">
                         	<div class="loanSearch">
                         		<p>선택조건으로 조회</p>
-                        		<form id="form" name="form" action="/mypage/book/loan" method="get">
+                        		<form id="form" name="form" action="/mypage/book/loanHistory" method="get">
                         			<span class="bunch">
 	                                    <select id="select" name="select" class="selectBox1" title="검색항목">
 	                                        <option value="title">제목</option>
