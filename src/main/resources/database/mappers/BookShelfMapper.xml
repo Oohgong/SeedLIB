@@ -30,13 +30,13 @@
 			FROM SHELF S
 			WHERE USERNAME = #{userName}
 				<choose>
-					<when test="select == 'name'">AND S.NAME LIKE CONCAT ('%', #{search}, '%')</when>
-					<when test="select == 'memo'">AND S.MEMO LIKE CONCAT ('%', #{search}, '%')</when>
+					<when test="select == 'name'">AND S.SHNAME LIKE CONCAT ('%', #{search}, '%')</when>
+					<when test="select == 'memo'">AND S.SHMEMO LIKE CONCAT ('%', #{search}, '%')</when>
 				</choose>
 			ORDER BY
    			<choose>
-   				<when test="sortHow == 'name'">S.NAME</when>
-   				<when test="sortHow == 'memo'">S.MEMO</when>
+   				<when test="sortHow == 'name'">S.SHNAME</when>
+   				<when test="sortHow == 'memo'">S.SHMEMO</when>
    				<otherwise>S.CREDATE</otherwise>
    			</choose>
    			<choose>
