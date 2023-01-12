@@ -6,9 +6,9 @@
 <mapper namespace="com.seed.lib.book.loan.BookLoanMapper">
 	
 	<!-- 대출하면 책 대출count update -->
-	<update id="setCountUpdate" parameterType="BookVO">
-		UPDATE BOOK
-			SET BOOKCOUNT = #{bookCount}
+	<update id="setCountUpdate" parameterType="Long">
+		UPDATE BOOK SET BOOKCOUNT
+			= (SELECT BOOKCOUNT FROM BOOK WHERE ISBN = #{isbn})+1
 		WHERE ISBN = #{isbn}
 	</update>
 	
@@ -17,32 +17,52 @@
 		SELECT QUANTITY FROM BOOKLIB WHERE LIBNUM = #{libNum} AND ISBN = #{isbn}
 	</select>
 	
-	<!-- 도서 대출,반납하면 도서관이 보유하고 있는 권수 -1 -->
+	<!-- 도서 대출하면 도서관이 보유하고 있는 권수 -1 -->
 	<update id="setQuanUpdate" parameterType="BookLibVO">
 		UPDATE BOOKLIB
-			SET QUANTITY = #{quantity}
+			SET QUANTITY
+				= (SELECT QUANTITY FROM BOOKLIB
+					WHERE ISBN = #{isbn} AND LIBNUM = #{libNum}) -1
 		WHERE ISBN = #{isbn} AND LIBNUM = #{libNum}
 	</update>
 	
-	<!-- 보유 권수가 0/1일때 able update -->
-	<update id="setAbleUpdate" parameterType="BookLibVO">
-		UPDATE BOOKLIB
-			SET ABLE = #{able}
-		WHERE ISBN = #{isbn} AND LIBNUM = #{libNum}
-	</update>
+	<select id="getRtDate" parameterType="Long" resultType="java.sql.Date">
+		SELECT MIN(LOANLDATE) FROM LOAN WHERE ISBN = #{isbn}
+	</select>
 	
 	
 	
+	<!-- isbn 없이 마이페이지에서 사용 -->
 	<!-- 대출 가능한 회원인지? - 해당 도서 대출 중인지 -->
 	<select id="getBookLoan" parameterType="BookLoanVO" resultType="Integer">
-		SELECT COUNT(LOANNUM) FROM LOAN WHERE USERNAME = #{userName} AND ISBN = #{isbn}
+		SELECT COUNT(LOANNUM) FROM LOAN
+		WHERE USERNAME = #{userName} AND RTSTATUS = #{rtStatus}
+			<if test="isbn != null">
+				AND ISBN = #{isbn}
+			</if>
+	</select>
+	
+	<!-- 대출 가능한 회원인지? - 해당 도서 상호대차 중인지 -->
+	<select id="getMuCount" parameterType="BookLoanVO" resultType="Integer">
+		SELECT COUNT(MUNUM) FROM MUTUALLOAN WHERE USERNAME = #{userName}
+			<if test="isbn != null">
+				AND ISBN = #{isbn}
+			</if>
+	</select>
+	
+	<!-- 대출 가능한 회원인지? - 해당 도서 예약 중인지 -->
+	<select id="getReCount" parameterType="BookLoanVO" resultType="Integer">
+		SELECT COUNT(RVNUM) FROM RESERVATION WHERE USERNAME = #{userName}
+			<if test="isbn != null">
+				AND ISBN = #{isbn}
+			</if>
 	</select>
 	
 	
 	<!-- 대출 신청 -->
 	<insert id="setLoan" parameterType="BookLoanVO">
 		INSERT INTO LOAN(USERNAME, ISBN, LOANSDATE, LOANLDATE, OVERDUE, RTSTATUS)
-			VALUES (#{userName}, #{isbn}, now(), now()+14, 0, 0)
+			VALUES (#{userName}, #{isbn}, now(), (SELECT date_add(now(),interval 14 DAY)), 0, 1)
 	</insert>
 	
 	
@@ -56,15 +76,19 @@
 		
 			WHERE L.USERNAME = #{userName}
 				AND RTSTATUS = #{rtStatus}
-				AND B.TITLE LIKE CONCAT ('%', #{title}, '%')
-				AND B.WRITER LIKE CONCAT ('%', #{writer}, '%')
+				<choose>
+					<when test="select == 'title'">AND B.TITLE LIKE CONCAT ('%', #{search}, '%')</when>
+					<when test="select == 'writer'">AND B.WRITER LIKE CONCAT ('%', #{search}, '%')</when>
+				</choose>
+				
 				<if test="dateA != null and dateB != null">
 					AND L.REGDATE BETWEEN #{dateA} AND #{dateB}
 				</if>
+				
 			ORDER BY
 			<choose>
-				<when test="select == 'title'">B.TITLE</when>
-				<when test="select == 'isbn'">B.ISBN</when>
+				<when test="sortHow == 'title'">B.TITLE</when>
+				<when test="sortHow == 'isbn'">B.ISBN</when>
 				<otherwise>L.LOANNUM</otherwise>
 			</choose>
 			<choose>
@@ -84,7 +108,7 @@
 			<result column="userName" property="userName"/>
 			<result column="loanSDate" property="loanSDate"/>
 			<result column="loanLDate" property="loanLDate"/>
-			<result column="overdue" property="overdue"/>
+			<result column="overDue" property="overDue"/>
 			<result column="rtStatus" property="rtStatus"/>
 			<result column="extension" property="extension"/>
 		</collection>	
@@ -96,23 +120,22 @@
 		SELECT EXTENSION FROM LOAN WHERE USERNAME = #{userName} AND ISBN = #{isbn}
 	</select>
 	
-	<!-- 대출 책 권수 -->
-	<!-- 1은 대출 중 | 0은 반납 완 -->
-	<select id="getLoanCount" parameterType="BookLoanVO" resultType="Integer">
-		SELECT COUNT(LOANNUM) FROM LOAN WHERE USERNAME = #{userName} AND RTSTATUS = #{rtStatus}
-	</select>
-	
 	<!-- 대출 연장 신청 -->
-	<!-- 연장 횟수, 만기일 업데이트 -->
-	<!-- <update id="setExtension">
-	</update> -->
+	<update id="setExtension" parameterType="BookLoanVO">
+		UPDATE LOAN SET EXTENSION
+				= (SELECT EXTENSION FROM LOAN WHERE ISBN = #{isbn} AND USERNAME = #{userName}) +1
+					AND LOANLDATE
+				= (SELECT date_add(
+					(SELECT LOANLDATE FROM LOAN WHERE ISBN = #{isbn} AND USERNAME = #{userName}), interval 7 DAY))
+		WHERE ISBN = #{isbn} AND USERNAME = #{userName};
+	</update>
 	
 	<!-- ================================== -->
 	
 	<!-- 예약 신청 -->
 	<insert id="setReservation" parameterType="BookLoanVO">
-		INSERT INTO RESERVATION (ISBN, USERNAME, ENABLEDATE)
-			VALUES (#{isbn}, #{userName}, #{enableDate})
+		INSERT INTO RESERVATION (ISBN, USERNAME, ENABLEDATE, REGDATE)
+			VALUES (#{isbn}, #{userName}, #{enableDate}, now())
 	</insert>
 	
 	<!-- 예약 목록 -->
@@ -120,22 +143,27 @@
 		SELECT E.*, B.*
 			FROM RESERVATION E
 				INNER JOIN BOOK B
-				ON B.ISBN = R.ISBN
+				ON B.ISBN = E.ISBN
 		
-			WHERE R.USERNAME = #{userName}
-				AND B.TITLE LIKE CONCAT ('%', #{title}, '%')
-				AND B.WRITER LIKE CONCAT ('%', #{writer}, '%')
+			WHERE E.USERNAME = #{userName}
+				<choose>
+					<when test="select == 'title'">AND B.TITLE LIKE CONCAT ('%', #{search}, '%')</when>
+					<when test="select == 'writer'">AND B.WRITER LIKE CONCAT ('%', #{search}, '%')</when>
+				</choose>
+				
 				<if test="dateA != null and dateB != null">
 					AND E.REGDATE BETWEEN #{dateA} AND #{dateB}
 				</if>
+				
 			ORDER BY
 			<choose>
-				<when test="select == 'title'">B.TITLE</when>
-				<otherwise>E.REGDATE</otherwise>
+				<when test="sortHow == 'title'">B.TITLE</when>
+				<when test="sortHow == 'isbn'">B.ISBN</when>
+				<otherwise>E.RVNUM</otherwise>
 			</choose>
 			<choose>
-				<when test="sort == 'desc'">&#160;DESC</when>
-				<otherwise>&#160;ASC</otherwise>
+				<when test="sort == 'desc'">DESC</when>
+				<otherwise>ASC</otherwise>
 			</choose>
 		LIMIT #{startRow}, #{lastRow}	
 	</select>
@@ -152,17 +180,12 @@
 		</collection>	
 	</resultMap>
 	
-	<!-- 예약 중인 책 권수 -->
-	<select id="getReCount" parameterType="BookReservationVO" resultType="Integer">
-		SELECT COUNT(RVNUM) FROM LOAN WHERE USERNAME = #{userName}
-	</select>
-	
 	<!-- ================================== -->
 	
 	<!-- 상호대차 신청 -->
 	<insert id="setMutual" parameterType="BookLoanVO">
-		INSERT INTO MUTUALLOAN (ISBN, USERNAME)
-			VALUES (#{isbn}, #{userName})
+		INSERT INTO MUTUALLOAN (ISBN, USERNAME, REGDATE)
+			VALUES (#{isbn}, #{userName}, now())
 	</insert>
 	
 	<!-- 상호대차 목록 -->
@@ -173,19 +196,24 @@
 				ON B.ISBN = M.ISBN
 		
 			WHERE M.USERNAME = #{userName}
-				AND B.TITLE LIKE CONCAT ('%', #{title}, '%')
-				AND B.WRITER LIKE CONCAT ('%', #{writer}, '%')
+				<choose>
+					<when test="select == 'title'">AND B.TITLE LIKE CONCAT ('%', #{search}, '%')</when>
+					<when test="select == 'writer'">AND B.WRITER LIKE CONCAT ('%', #{search}, '%')</when>
+				</choose>
+				
 				<if test="dateA != null and dateB != null">
 					AND M.REGDATE BETWEEN #{dateA} AND #{dateB}
 				</if>
+				
 			ORDER BY
 			<choose>
-				<when test="select == 'title'">B.TITLE</when>
-				<otherwise>M.REGDATE</otherwise>
+				<when test="sortHow == 'title'">B.TITLE</when>
+				<when test="sortHow == 'isbn'">B.ISBN</when>
+				<otherwise>M.MUNUM</otherwise>
 			</choose>
 			<choose>
-				<when test="sort == 'desc'">&#160;DESC</when>
-				<otherwise>&#160;ASC</otherwise>
+				<when test="sort == 'desc'">DESC</when>
+				<otherwise>ASC</otherwise>
 			</choose>
 		LIMIT #{startRow}, #{lastRow}	
 	</select>
@@ -198,13 +226,10 @@
 		<collection property="muVOs" javaType="List" ofType="BookMutualLoanVO">
 			<id column="loanNum" property="loanNum"/>
 			<result column="userName" property="userName"/>
+			<result column="regDate" property="regDate"/>
+			<result column="libNum" property="libNum"/>
 		</collection>	
 	</resultMap>
-	
-	<!-- 상호대차 신청한 책 권수 -->
-	<select id="getMuCount" parameterType="BookMutualLoanVO" resultType="Integer">
-		SELECT COUNT(MUNUM) FROM LOAN WHERE USERNAME = #{userName}
-	</select>
 	
 	<!-- FROM 페이지 별로 설정 -->
 	<select id="getCount" resultType="Long" parameterType="BookLoanPager">
